@@ -3,29 +3,32 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Box, CircularProgress, Typography } from '@mui/material'; // Import MUI components
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Define the shape of the data we expect
+// --- TYPE DEFINITIONS ---
 interface StatusData {
   status: string;
   count: number;
 }
 
-// Define the shape of the data for Chart.js
 type ChartData = {
   labels: string[];
   datasets: {
     data: number[];
     backgroundColor: string[];
+    borderColor: string;
+    borderWidth: number;
   }[];
 } | null;
 
-export default function AppointmentAnalytics() {
+// --- COMPONENT DEFINITION ---
+const AppointmentAnalytics = ({ isLoading }: { isLoading: boolean }) => {
   const [statusData, setStatusData] = useState<ChartData>(null);
+  const [internalLoading, setInternalLoading] = useState(true);
 
   useEffect(() => {
-    // FIX: Corrected the function name from 'get_appointment_by_status' to 'get_appointments_by_status'
     supabase.rpc('get_appointments_by_status').then(({ data }) => {
       const typedData = data as StatusData[];
       if (typedData) {
@@ -34,36 +37,52 @@ export default function AppointmentAnalytics() {
           datasets: [{
             data: typedData.map(d => d.count),
             backgroundColor: [
-              'rgba(54, 162, 235, 0.6)',  // Blue
-              'rgba(75, 192, 192, 0.6)',  // Green
-              'rgba(255, 99, 132, 0.6)',   // Red
+              'rgba(54, 162, 235, 0.7)',
+              'rgba(75, 192, 192, 0.7)',
+              'rgba(255, 99, 132, 0.7)',
+              'rgba(255, 206, 86, 0.7)',
+              'rgba(153, 102, 255, 0.7)',
             ],
+            borderColor: '#fff',
+            borderWidth: 1,
           }],
         });
       }
+      setInternalLoading(false);
     });
   }, []);
 
+  // Show a spinner if the parent or this component is loading
+  if (isLoading || internalLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
-    <div>
-      <h1>Appointment Analytics</h1>
-      <div style={{ width: '400px', margin: '2rem auto' }}>
-        <h2>Appointments by Status</h2>
-        {statusData ? (
+    <Box sx={{ height: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <Typography variant="h6" gutterBottom>Appointments by Status</Typography>
+      {statusData ? (
+        <Box sx={{ flexGrow: 1, width: '100%' }}>
           <Pie 
             data={statusData}
             options={{
               responsive: true,
+              maintainAspectRatio: false,
               plugins: {
-                legend: { position: 'top' },
-                title: { display: true, text: 'Distribution of Appointment Statuses' }
+                legend: { position: 'top' as const },
+                title: { display: false } // Title is handled by Typography
               }
             }}
           />
-        ) : (
-          <p>Loading appointment data...</p>
-        )}
-      </div>
-    </div>
+        </Box>
+      ) : (
+        <p>No appointment data available.</p>
+      )}
+    </Box>
   );
-}
+};
+
+export default AppointmentAnalytics;

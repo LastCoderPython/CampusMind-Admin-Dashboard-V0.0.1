@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Bar, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend } from 'chart.js';
+import { Box, CircularProgress, Typography } from '@mui/material'; // Import MUI components for styling
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
 
-// Define the shape of the data we expect from our database functions
+// --- TYPE DEFINITIONS ---
 interface DistributionData {
   severity_level: string;
   result_count: number;
@@ -17,55 +18,69 @@ interface DailyVolumeData {
   count: number;
 }
 
-// Define the shape of the data for Chart.js
 type ChartData = {
   labels: string[];
   datasets: any[];
 } | null;
 
-export default function ScreeningAnalytics() {
+// --- COMPONENT DEFINITION ---
+const ScreeningAnalytics = ({ isLoading }: { isLoading: boolean }) => {
   const [distributionData, setDistributionData] = useState<ChartData>(null);
   const [dailyVolumeData, setDailyVolumeData] = useState<ChartData>(null);
+  const [internalLoading, setInternalLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch distribution data
-    supabase.rpc('get_screening_distribution').then(({ data }) => {
-      // Tell TypeScript to trust that 'data' matches our 'DistributionData' interface
-      const typedData = data as DistributionData[];
-      if (typedData) {
-        setDistributionData({
-          labels: typedData.map(d => d.severity_level),
-          datasets: [{ label: 'Score Distribution', data: typedData.map(d => d.result_count), backgroundColor: 'rgba(75, 192, 192, 0.6)' }],
-        });
-      }
-    });
+    const fetchData = async () => {
+      // Fetch both data points in parallel for efficiency
+      const [distributionResult, volumeResult] = await Promise.all([
+        supabase.rpc('get_screening_distribution'),
+        supabase.rpc('get_daily_screening_volume')
+      ]);
 
-    // Fetch daily volume data
-    supabase.rpc('get_daily_screening_volume').then(({ data }) => {
-      // Tell TypeScript to trust that 'data' matches our 'DailyVolumeData' interface
-      const typedData = data as DailyVolumeData[];
-      if (typedData) {
-        setDailyVolumeData({
-          labels: typedData.map(d => new Date(d.date).toLocaleDateString()),
-          datasets: [{ label: 'Screenings per Day', data: typedData.map(d => d.count), fill: false, borderColor: 'rgb(255, 99, 132)' }],
+      const distributionTypedData = distributionResult.data as DistributionData[];
+      if (distributionTypedData) {
+        setDistributionData({
+          labels: distributionTypedData.map(d => d.severity_level),
+          datasets: [{ label: 'Score Distribution', data: distributionTypedData.map(d => d.result_count), backgroundColor: 'rgba(75, 192, 192, 0.6)' }],
         });
       }
-    });
+
+      const volumeTypedData = volumeResult.data as DailyVolumeData[];
+      if (volumeTypedData) {
+        setDailyVolumeData({
+          labels: volumeTypedData.map(d => new Date(d.date).toLocaleDateString()),
+          datasets: [{ label: 'Screenings per Day', data: volumeTypedData.map(d => d.count), fill: false, borderColor: 'rgb(255, 99, 132)' }],
+        });
+      }
+      
+      setInternalLoading(false);
+    };
+
+    fetchData();
   }, []);
 
+  // Use the parent's loading state OR this component's internal loading state
+  if (isLoading || internalLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
-    <div>
-      <h1>Screening Analytics</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-        <div>
-          <h2>Score Distribution</h2>
-          {distributionData ? <Bar data={distributionData} /> : <p>Loading...</p>}
-        </div>
-        <div>
-          <h2>Daily Volume</h2>
-          {dailyVolumeData ? <Line data={dailyVolumeData} /> : <p>Loading...</p>}
-        </div>
-      </div>
-    </div>
+    // The parent component provides the main title. We use Typography for sub-headings.
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: '2rem' }}>
+      <Box>
+        <Typography variant="h6" gutterBottom align="center">Score Distribution</Typography>
+        {distributionData ? <Bar data={distributionData} /> : <p>No distribution data available.</p>}
+      </Box>
+      <Box>
+        <Typography variant="h6" gutterBottom align="center">Daily Volume</Typography>
+        {dailyVolumeData ? <Line data={dailyVolumeData} /> : <p>No volume data available.</p>}
+      </Box>
+    </Box>
   );
-}
+};
+
+export default ScreeningAnalytics;
